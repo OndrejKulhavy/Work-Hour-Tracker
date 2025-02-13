@@ -1,0 +1,56 @@
+{
+    "$schema": "https://www.raycast.com/schemas/extension.json",
+    "name": "work-hour-tracker",
+    "title": "Work Hour Tracker",
+    "description": "Raycast extension for tracking monthly work hours",
+    "icon": "extension-icon.png",
+    "author": "ondrej_kulhavy",
+    "categories": [
+        "Productivity"
+    ],
+    "license": "MIT",
+    "commands": [
+        {
+            "name": "start-session",
+            "title": "Start Work Session",
+            "description": "Running this command you start your work session",
+            "mode": "no-view"
+        },
+        {
+            "name": "end-session",
+            "title": "End Work Session",
+            "description": "Running this command you end your work session",
+            "mode": "view"
+        },
+        {
+            "name": "generate-summary",
+            "title": "Generate month summary",
+            "description": "Running this command you generate an HTML summary of the current month's work hours",
+            "mode": "view"
+        }
+    ],
+    "dependencies": {
+        "@raycast/api": "^1.91.2",
+        "@raycast/utils": "^1.17.0",
+        "@types/better-sqlite3": "^7.6.12",
+        "better-sqlite3": "^11.8.1",
+        "sqlite": "^5.1.1",
+        "sqlite3": "^5.1.7"
+    },
+    "devDependencies": {
+        "@raycast/eslint-config": "^1.0.11",
+        "@types/node": "20.8.10",
+        "@types/react": "18.3.3",
+        "eslint": "^8.57.0",
+        "prettier": "^3.3.3",
+        "typescript": "^5.4.5"
+    },
+    "scripts": {
+        "build": "ray build",
+        "dev": "ray develop",
+        "fix-lint": "ray lint --fix",
+        "lint": "ray lint",
+        "prepublishOnly": "echo \"\\n\\nIt seems like you are trying to publish the Raycast extension to npm.\\n\\nIf you did intend to publish it to npm, remove the \\`prepublishOnly\\` script and rerun \\`npm publish\\` again.\\nIf you wanted to publish it to the Raycast Store instead, use \\`npm run publish\\` instead.\\n\\n\" && exit 1",
+        "publish": "npx @raycast/api@latest publish"
+    }
+}
