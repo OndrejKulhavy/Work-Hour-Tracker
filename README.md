@@ -1,4 +1,7 @@
 # Work Hour Tracker
+![GitHub Last Commit](https://img.shields.io/github/last-commit/OndrejKulhavy/Work-Hour-Tracker)
+![GitHub Release Date](https://img.shields.io/github/release-date/OndrejKulhavy/Work-Hour-Tracker)
+
 
 The Work Hour Tracker is a Raycast extension that helps you track your work hours. You can start and end work sessions, add descriptions to your sessions, and store the data in an SQLite database. You can also generate a summary of your work hours for the month.
 
