@@ -20,12 +20,30 @@
             "name": "end-session",
             "title": "End Work Session",
             "description": "Running this command you end your work session",
-            "mode": "view"
+            "mode": "view",
+            "arguments": [
+                {
+                    "name": "description",
+                    "placeholder": "Description",
+                    "type": "text"
+                },
+                {
+                    "name": "tag",
+                    "placeholder": "Tag",
+                    "type": "text"
+                }
+            ]
         },
         {
             "name": "generate-summary",
-            "title": "Generate month summary",
+            "title": "Monthly Work Hours Report",
             "description": "Running this command you generate an HTML summary of the current month's work hours",
+            "mode": "view"
+        },
+        {
+            "name": "manage-sessions",
+            "title": "Manage Work Sessions",
+            "description": "Running this command you can manage your work sessions",
             "mode": "view"
         }
     ],

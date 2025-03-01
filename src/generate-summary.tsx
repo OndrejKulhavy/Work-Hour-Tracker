@@ -1,18 +1,11 @@
-import { showToast, Toast, ActionPanel, Action, Form } from "@raycast/api";
-import { getAllDates, getSessionsForDate } from "./storage";
-import { exec } from "child_process";
-import { promisify } from "util";
-import path from "path";
-import os from "os";
+import { showToast, Toast, ActionPanel, Action, Form, Clipboard, showHUD } from "@raycast/api";
+import { validateMonthYear, getSessionsForMonthYear } from "./utils";
+import { buildHTMLContent, writeSummaryToFile, openSummaryInBrowser } from "./htmlExport";
+import { WorkSession } from "./storage";
 
-const execAsync = promisify(exec);
-
-interface WorkSession {
-  id: number;
-  start_time: string;
-  end_time?: string;
-}
-
+/**
+ * Main command for generating a monthly summary in Raycast.
+ */
 export default function GenerateSummaryCommand() {
   return (
     <Form
@@ -20,110 +13,124 @@ export default function GenerateSummaryCommand() {
         <ActionPanel>
           <Action.SubmitForm
             title="Generate Summary"
-            onSubmit={(values) => generateSummary(values.month, values.year)}
+            onSubmit={(values) => handleFormSubmit(values.month, values.year)}
           />
         </ActionPanel>
       }
     >
-      <Form.TextField id="month" title="Month (1-12)" defaultValue="1" />
+      <Form.Dropdown id="month" title="Month">
+        {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+          <Form.Dropdown.Item key={m} value={String(m)} title={String(m)} />
+        ))}
+      </Form.Dropdown>
       <Form.TextField id="year" title="Year (YYYY)" defaultValue="2025" />
     </Form>
   );
 }
 
 /**
- * Summarizes sessions for a given month/year by collecting
- * local storage keys that fall within that month/year.
+ * Handles the form submission and initiates summary generation.
  */
-async function generateSummary(monthInput: string, yearInput: string) {
+async function handleFormSubmit(monthInput: string, yearInput: string) {
   try {
     const month = parseInt(monthInput, 10);
     const year = parseInt(yearInput, 10);
 
-    if (isNaN(month) || isNaN(year)) {
-      throw new Error("Invalid input for month or year");
-    }
+    validateMonthYear(month, year);
+    const sessionsMap = await getSessionsForMonthYear(month, year);
 
-    // Gather all relevant date keys
-    const allDates = await getAllDates();
-    // Filter out those that match the specified month/year
-    const matchingKeys = allDates.filter((dateKey) => {
-      const [thisYear, thisMonth] = dateKey.split("-").map((p) => parseInt(p, 10));
-      return thisYear === year && thisMonth === month;
-    });
+    // Build the HTML summary and write it to an HTML file
+    const htmlContent = buildHTMLContent(month, year, sessionsMap);
+    const outputFile = await writeSummaryToFile(year, month, htmlContent);
 
-    if (!matchingKeys.length) {
-      await showToast(Toast.Style.Failure, "No sessions found for this month/year.");
-      return;
-    }
+    // Open the summary in the default browser
+    await openSummaryInBrowser(outputFile);
 
-    // Retrieve sessions for each matching date
-    const allSessions: { date: string; sessions: WorkSession[] }[] = [];
-    for (const dateKey of matchingKeys) {
-      const sessions = await getSessionsForDate(dateKey);
-      allSessions.push({ date: dateKey, sessions });
-    }
+    // Copy the same table content that the web button copies
+    const textToCopy = buildClipboardSummary(month, year, sessionsMap);
+    await Clipboard.copy(textToCopy);
 
-    // Flatten all sessions into one array for total hour calculation
-    let totalHours = 0;
-    let htmlTableRows = "";
-
-    for (const entry of allSessions) {
-      const dateLabel = entry.date;
-      for (const session of entry.sessions) {
-        if (!session.end_time) {
-          continue;
-        }
-
-        const start = new Date(session.start_time);
-        const end = new Date(session.end_time);
-        const hours = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
-        totalHours += hours;
-
-        const startTime = formatTime(start);
-        const endTime = formatTime(end);
-        htmlTableRows += `<tr><td>${dateLabel}</td><td>${startTime} - ${endTime}</td><td>${hours.toFixed(2)}</td></tr>`;
-      }
-    }
-
-    const htmlContent = buildHTML(month, year, htmlTableRows, totalHours);
-
-    // Write HTML to a temp file
-    const outputFile = path.join(os.tmpdir(), `work-summary-${year}-${month}.html`);
-    const fs = await import("fs/promises");
-    await fs.writeFile(outputFile, htmlContent, "utf8");
-
-    // Open in default browser
-    await execAsync(`open "${outputFile}"`);
-
+    // Show a toast and a HUD that it's copied
     await showToast(Toast.Style.Success, "Summary generated");
+    await showHUD("Summary copied to clipboard");
   } catch (error) {
     await showToast(Toast.Style.Failure, "Failed to generate summary", String(error));
   }
 }
 
-function formatTime(date: Date) {
+/**
+ * Builds the text that would be copied to the clipboard, mirroring the web button's output.
+ */
+function buildClipboardSummary(month: number, year: number, sessionsMap: Map<string, WorkSession[]>): string {
+  const numDays = getDaysInMonth(year, month);
+  const lines: string[] = [];
+  lines.push("Day\tSince\tTill\tHours");
+
+  for (let day = 1; day <= numDays; day++) {
+    const dateKey = constructDateKey(year, month, day);
+    const dailySessions = sessionsMap.get(dateKey) || [];
+    const { firstSessionStart, lastSessionEnd, dailyHours } = calculateDailySessions(dailySessions);
+
+    const since = dailyHours > 0 && firstSessionStart ? formatTime(firstSessionStart) : "";
+    const till = dailyHours > 0 && lastSessionEnd ? formatTime(lastSessionEnd) : "";
+    const hours = dailyHours > 0 ? dailyHours.toFixed(2) : "";
+
+    lines.push(`${day}\t${since}\t${till}\t${hours}`);
+  }
+
+  return lines.join("\n");
+}
+
+/**
+ * Constructs a date key formatted as YYYY-MM-DD.
+ */
+function constructDateKey(year: number, month: number, day: number): string {
+  const monthString = String(month).padStart(2, "0");
+  const dayString = String(day).padStart(2, "0");
+  return `${year}-${monthString}-${dayString}`;
+}
+
+/**
+ * Retrieves the correct number of days in the specified month/year.
+ */
+function getDaysInMonth(year: number, month: number): number {
+  return new Date(year, month, 0).getDate();
+}
+
+/**
+ * Calculates the start time, end time, and daily hours for a given set of sessions.
+ */
+function calculateDailySessions(sessions: WorkSession[]) {
+  let firstSessionStart: Date | null = null;
+  let lastSessionEnd: Date | null = null;
+  let dailyHours = 0;
+
+  for (const session of sessions) {
+    if (!session.end_time) {
+      continue;
+    }
+    const start = new Date(session.start_time);
+    const end = new Date(session.end_time);
+    const hours = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
+
+    dailyHours += hours;
+
+    if (!firstSessionStart || start < firstSessionStart) {
+      firstSessionStart = start;
+    }
+    if (!lastSessionEnd || end > lastSessionEnd) {
+      lastSessionEnd = end;
+    }
+  }
+
+  return { firstSessionStart, lastSessionEnd, dailyHours };
+}
+
+/**
+ * Formats a Date object as HH:MM.
+ */
+function formatTime(date: Date): string {
   const hours = date.getHours();
   const minutes = String(date.getMinutes()).padStart(2, "0");
   return `${hours}:${minutes}`;
-}
-
-function buildHTML(month: number, year: number, rows: string, totalHours: number) {
-  return `
-<html>
-<head><title>Work Summary</title></head>
-<body>
-  <h1>Work Summary ${month}/${year}</h1>
-  <table border='1' cellspacing='0' cellpadding='5'>
-    <tr>
-      <th>Date</th>
-      <th>Time Range</th>
-      <th>Hours</th>
-    </tr>
-    ${rows}
-  </table>
-  <p><strong>Total Hours: ${totalHours.toFixed(2)}</strong></p>
-</body>
-</html>
-`;
 }
